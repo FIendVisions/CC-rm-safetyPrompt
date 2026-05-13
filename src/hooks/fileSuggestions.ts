@@ -77,6 +77,10 @@ let lastGitIndexMtime: number | null = null
 let loadedTrackedSignature: string | null = null
 let loadedMergedSignature: string | null = null
 
+function normalizeSuggestionPath(filePath: string): string {
+  return filePath.replace(/\\/g, '/')
+}
+
 /**
  * Clear all file suggestion caches.
  * Call this when resuming a session to ensure fresh file discovery.
@@ -155,11 +159,11 @@ function normalizeGitPaths(
   originalCwd: string,
 ): string[] {
   if (originalCwd === repoRoot) {
-    return files
+    return files.map(normalizeSuggestionPath)
   }
   return files.map(f => {
     const absolutePath = path.join(repoRoot, f)
-    return path.relative(originalCwd, absolutePath)
+    return normalizeSuggestionPath(path.relative(originalCwd, absolutePath))
   })
 }
 
@@ -393,7 +397,7 @@ async function getFilesUsingGit(
 export function getDirectoryNames(files: string[]): string[] {
   const directoryNames = new Set<string>()
   collectDirectoryNames(files, 0, files.length, directoryNames)
-  return [...directoryNames].map(d => d + path.sep)
+  return [...directoryNames].map(d => normalizeSuggestionPath(d) + '/')
 }
 
 /**
@@ -414,7 +418,7 @@ export async function getDirectoryNamesAsync(
       chunkStart = performance.now()
     }
   }
-  return [...directoryNames].map(d => d + path.sep)
+  return [...directoryNames].map(d => normalizeSuggestionPath(d) + '/')
 }
 
 function collectDirectoryNames(
@@ -449,7 +453,7 @@ async function getClaudeConfigFiles(cwd: string): Promise<string[]> {
     ),
   )
   return markdownFileArrays.flatMap(markdownFiles =>
-    markdownFiles.map(f => f.filePath),
+    markdownFiles.map(f => normalizeSuggestionPath(f.filePath)),
   )
 }
 
@@ -500,7 +504,9 @@ async function getProjectFiles(
   }
 
   const files = await ripGrep(rgArgs, '.', abortSignal)
-  const relativePaths = files.map(f => path.relative(getCwd(), f))
+  const relativePaths = files.map(f =>
+    normalizeSuggestionPath(path.relative(getCwd(), f)),
+  )
 
   const duration = Date.now() - startTime
   logForDebugging(
@@ -604,10 +610,19 @@ function createFileSuggestionItem(
   filePath: string,
   score?: number,
 ): SuggestionItem {
+  const isDirectory = filePath.endsWith('/') || filePath.endsWith('\\')
+  const metadata =
+    score !== undefined || isDirectory
+      ? {
+          ...(score !== undefined ? { score } : {}),
+          ...(isDirectory ? { type: 'directory' as const } : {}),
+        }
+      : undefined
+
   return {
     id: `file-${filePath}`,
     displayText: filePath,
-    metadata: score !== undefined ? { score } : undefined,
+    metadata,
   }
 }
 
@@ -699,7 +714,8 @@ async function getTopLevelPaths(): Promise<string[]> {
       const fullPath = path.join(cwd, entry.name)
       const relativePath = path.relative(cwd, fullPath)
       // Add trailing separator for directories
-      return entry.isDirectory() ? relativePath + path.sep : relativePath
+      const suggestionPath = normalizeSuggestionPath(relativePath)
+      return entry.isDirectory() ? suggestionPath + '/' : suggestionPath
     })
   } catch (error) {
     logError(error as Error)
@@ -729,14 +745,18 @@ export async function generateFileSuggestions(
       query: partialPath,
     }
     const results = await executeFileSuggestionCommand(input)
-    return results.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
+    return results
+      .slice(0, MAX_SUGGESTIONS)
+      .map(result => createFileSuggestionItem(result))
   }
 
   // If the partial path is empty or just a dot, return current directory suggestions
   if (partialPath === '' || partialPath === '.' || partialPath === './') {
     const topLevelPaths = await getTopLevelPaths()
     startBackgroundCacheRefresh()
-    return topLevelPaths.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
+    return topLevelPaths
+      .slice(0, MAX_SUGGESTIONS)
+      .map(result => createFileSuggestionItem(result))
   }
 
   const startTime = Date.now()
@@ -761,9 +781,14 @@ export async function generateFileSuggestions(
       normalizedPath = expandPath(normalizedPath)
     }
 
-    const matches = fileIndex
+    let matches = fileIndex
       ? findMatchingFiles(fileIndex, normalizedPath)
       : []
+
+    if (matches.length === 0 && fileListRefreshPromise) {
+      const refreshedIndex = await fileListRefreshPromise
+      matches = findMatchingFiles(refreshedIndex, normalizedPath)
+    }
 
     const duration = Date.now() - startTime
     logForDebugging(

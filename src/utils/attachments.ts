@@ -2762,7 +2762,7 @@ export function extractAtMentionedFiles(content: string): string[] {
 
   // Two patterns: quoted paths and regular paths
   const quotedAtMentionRegex = /(^|\s)@"([^"]+)"/g
-  const regularAtMentionRegex = /(^|\s)@([^\s]+)\b/g
+  const regularAtMentionRegex = /(^|\s)@([^\s"']+)/g
 
   const quotedMatches: string[] = []
   const regularMatches: string[] = []
@@ -2776,14 +2776,13 @@ export function extractAtMentionedFiles(content: string): string[] {
   }
 
   // Extract regular mentions
-  const regularMatchArray = content.match(regularAtMentionRegex) || []
-  regularMatchArray.forEach(match => {
-    const filename = match.slice(match.indexOf('@') + 1)
+  while ((match = regularAtMentionRegex.exec(content)) !== null) {
+    const filename = match[2]
     // Don't include if it starts with a quote (already handled as quoted)
-    if (!filename.startsWith('"')) {
+    if (filename && !filename.startsWith('"')) {
       regularMatches.push(filename)
     }
-  })
+  }
 
   // Combine and deduplicate
   return uniq([...quotedMatches, ...regularMatches])
@@ -2792,11 +2791,17 @@ export function extractAtMentionedFiles(content: string): string[] {
 export function extractMcpResourceMentions(content: string): string[] {
   // Extract MCP resources mentioned with @ symbol in format @server:uri
   // Example: "@server1:resource/path" would extract "server1:resource/path"
-  const atMentionRegex = /(^|\s)@([^\s]+:[^\s]+)\b/g
-  const matches = content.match(atMentionRegex) || []
+  const atMentionRegex = /(^|\s)@([^\s]+:[^\s]+)/g
+  const matches: string[] = []
+  let match
+  while ((match = atMentionRegex.exec(content)) !== null) {
+    if (match[2]) {
+      matches.push(match[2])
+    }
+  }
 
   // Remove the prefix (everything before @) from each match
-  return uniq(matches.map(match => match.slice(match.indexOf('@') + 1)))
+  return uniq(matches)
 }
 
 export function extractAgentMentions(content: string): string[] {

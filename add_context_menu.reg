@@ -1,0 +1,17 @@
+Windows Registry Editor Version 5.00
+
+; Right-click on empty space inside a folder
+[HKEY_CLASSES_ROOT\Directory\background\shell\ClaudeCode]
+@="Open Claude Code Here"
+"Icon"="F:\\Code\\CC-rm-safetyPrompt\\Claude.ico"
+
+[HKEY_CLASSES_ROOT\Directory\background\shell\ClaudeCode\command]
+@="cmd.exe /k \"\"F:\\Code\\CC-rm-safetyPrompt\\start_with_dir.bat\" \"%V\"\""
+
+; Right-click on a folder itself
+[HKEY_CLASSES_ROOT\Directory\shell\ClaudeCode]
+@="Open Claude Code Here"
+"Icon"="F:\\Code\\CC-rm-safetyPrompt\\Claude.ico"
+
+[HKEY_CLASSES_ROOT\Directory\shell\ClaudeCode\command]
+@="cmd.exe /k \"\"F:\\Code\\CC-rm-safetyPrompt\\start_with_dir.bat\" \"%1\"\""

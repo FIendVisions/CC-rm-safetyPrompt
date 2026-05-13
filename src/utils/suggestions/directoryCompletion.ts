@@ -33,6 +33,10 @@ type ParsedPath = {
   prefix: string
 }
 
+function normalizeSuggestionPath(filePath: string): string {
+  return filePath.replace(/\\/g, '/')
+}
+
 // Cache configuration
 const CACHE_SIZE = 500
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
@@ -150,14 +154,21 @@ export function clearDirectoryCache(): void {
  * Checks if a string looks like a path (starts with path-like prefixes)
  */
 export function isPathLikeToken(token: string): boolean {
+  const isWindowsDrivePath = /^[A-Za-z]:(?:[/\\]|$)/.test(token)
+  if (token.includes(':') && !isWindowsDrivePath) {
+    return false
+  }
+  const hasPathSeparator = token.includes('/') || token.includes('\\')
   return (
+    hasPathSeparator ||
     token.startsWith('~/') ||
     token.startsWith('/') ||
     token.startsWith('./') ||
     token.startsWith('../') ||
     token === '~' ||
     token === '.' ||
-    token === '..'
+    token === '..' ||
+    isWindowsDrivePath
   )
 }
 
@@ -236,16 +247,18 @@ export async function getPathCompletions(
   if (hasSeparator) {
     // Find the last separator (either / or platform-specific)
     const lastSlash = partialPath.lastIndexOf('/')
+    const lastBackslash = partialPath.lastIndexOf('\\')
     const lastSep = partialPath.lastIndexOf(sep)
-    const lastSeparatorPos = Math.max(lastSlash, lastSep)
+    const lastSeparatorPos = Math.max(lastSlash, lastBackslash, lastSep)
     dirPortion = partialPath.substring(0, lastSeparatorPos + 1)
   }
   if (dirPortion.startsWith('./') || dirPortion.startsWith('.' + sep)) {
     dirPortion = dirPortion.slice(2)
   }
+  dirPortion = normalizeSuggestionPath(dirPortion)
 
   return matches.map(entry => {
-    const fullPath = dirPortion + entry.name
+    const fullPath = normalizeSuggestionPath(dirPortion + entry.name)
     return {
       id: fullPath,
       displayText: entry.type === 'directory' ? fullPath + '/' : fullPath,

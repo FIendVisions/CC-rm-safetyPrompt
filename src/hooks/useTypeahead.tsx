@@ -23,7 +23,7 @@ import { getShellCompletions, type ShellCompletionType } from '../utils/bash/she
 import { formatLogMetadata } from '../utils/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
 import { applyCommandSuggestion, findMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
-import { getDirectoryCompletions, getPathCompletions, isPathLikeToken } from '../utils/suggestions/directoryCompletion.js';
+import { getDirectoryCompletions, getPathCompletions } from '../utils/suggestions/directoryCompletion.js';
 import { getShellHistoryCompletion } from '../utils/suggestions/shellHistoryCompletion.js';
 import { getSlackChannelSuggestions, hasSlackMcpServer } from '../utils/suggestions/slackChannelSuggestions.js';
 import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js';
@@ -46,6 +46,14 @@ function isPathMetadata(metadata: unknown): metadata is {
   type: 'directory' | 'file';
 } {
   return typeof metadata === 'object' && metadata !== null && 'type' in metadata && (metadata.type === 'directory' || metadata.type === 'file');
+}
+
+function isDirectorySuggestion(suggestion: SuggestionItem): boolean {
+  return (isPathMetadata(suggestion.metadata) && suggestion.metadata.type === 'directory') || suggestion.displayText.endsWith('/') || suggestion.displayText.endsWith('\\');
+}
+
+function canUsePathCompletion(searchToken: string): boolean {
+  return searchToken === '' || !searchToken.includes(':') || /^[A-Za-z]:(?:[/\\]|$)/.test(searchToken);
 }
 
 // Helper to determine selectedSuggestion when updating suggestions
@@ -539,6 +547,14 @@ export function useTypeahead({
       return;
     }
 
+    if ((suggestionType === 'file' || suggestionType === 'directory') && effectiveCursorOffset > 0 && /\s/.test(value[effectiveCursorOffset - 1]!)) {
+      debouncedFetchFileSuggestions.cancel();
+      latestSearchTokenRef.current = null;
+      latestPathTokenRef.current = '';
+      clearSuggestions();
+      return;
+    }
+
     // Check for mid-input slash command (e.g., "help me /com")
     // Only in prompt mode, not when input starts with "/" (handled separately)
     // Note: ghost text for prompt mode is computed synchronously via syncPromptGhostText useMemo.
@@ -822,12 +838,13 @@ export function useTypeahead({
       if (completionToken && completionToken.token.startsWith('@')) {
         const searchToken = extractSearchToken(completionToken);
 
-        // If the token after @ is path-like, use path completion instead of fuzzy search
-        // This handles cases like @~/path, @./path, @/path for directory traversal
-        if (isPathLikeToken(searchToken)) {
+        // Empty @ and path-like tokens should browse the filesystem directly.
+        // This keeps @, @src/, and @目录/ traversable even before the fuzzy
+        // file index has finished building.
+        if (canUsePathCompletion(searchToken)) {
           latestPathTokenRef.current = searchToken;
           const pathSuggestions = await getPathCompletions(searchToken, {
-            maxResults: 10
+            maxResults: 15
           });
           // Discard stale results if a newer query was initiated while waiting
           if (latestPathTokenRef.current !== searchToken) {
@@ -843,6 +860,8 @@ export function useTypeahead({
             return;
           }
         }
+
+        latestPathTokenRef.current = `non-path:${searchToken}`;
 
         // Skip if we already fetched for this exact token (prevents loop from
         // suggestions dependency causing updateSuggestions to be recreated)
@@ -1073,6 +1092,7 @@ export function useTypeahead({
           // Otherwise, apply the selected suggestion
           const suggestion = suggestions[index];
           if (suggestion) {
+            const isDir = isDirectorySuggestion(suggestion);
             const needsQuotes = suggestion.displayText.includes(' ');
             const replacementValue = formatReplacementValue({
               displayText: suggestion.displayText,
@@ -1080,10 +1100,15 @@ export function useTypeahead({
               hasAtPrefix,
               needsQuotes,
               isQuoted: completionToken.isQuoted,
-              isComplete: true // complete suggestion
+              isComplete: !isDir
             });
             applyFileSuggestion(replacementValue, input, completionToken.token, completionToken.startPos, onInputChange, setCursorOffset);
-            clearSuggestions();
+            if (isDir) {
+              const newInput = input.slice(0, completionToken.startPos) + replacementValue + input.slice(completionToken.startPos + completionToken.token.length);
+              void updateSuggestions(newInput, completionToken.startPos + replacementValue.length);
+            } else {
+              clearSuggestions();
+            }
           }
         }
       }
@@ -1181,6 +1206,7 @@ export function useTypeahead({
       if (completionInfo) {
         if (suggestion) {
           const hasAtPrefix = completionInfo.token.startsWith('@');
+          const isDir = isDirectorySuggestion(suggestion);
           const needsQuotes = suggestion.displayText.includes(' ');
           const replacementValue = formatReplacementValue({
             displayText: suggestion.displayText,
@@ -1188,11 +1214,16 @@ export function useTypeahead({
             hasAtPrefix,
             needsQuotes,
             isQuoted: completionInfo.isQuoted,
-            isComplete: true // complete suggestion
+            isComplete: !isDir
           });
           applyFileSuggestion(replacementValue, input, completionInfo.token, completionInfo.startPos, onInputChange, setCursorOffset);
           debouncedFetchFileSuggestions.cancel();
-          clearSuggestions();
+          if (isDir) {
+            const newInput = input.slice(0, completionInfo.startPos) + replacementValue + input.slice(completionInfo.startPos + completionInfo.token.length);
+            void updateSuggestions(newInput, completionInfo.startPos + replacementValue.length);
+          } else {
+            clearSuggestions();
+          }
         }
       }
     } else if (suggestionType === 'directory' && selectedSuggestion < suggestions.length) {
