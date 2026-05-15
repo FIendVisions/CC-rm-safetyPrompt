@@ -44,7 +44,7 @@ import {
   getConditionalRulesForCwdLevelDirectory,
   type MemoryFileInfo,
 } from './claudemd.js'
-import { dirname, parse, relative, resolve } from 'path'
+import { dirname, join, parse, relative, resolve } from 'path'
 import { getCwd } from 'src/utils/cwd.js'
 import { getViewedTeammateTask } from '../state/selectors.js'
 import { logError } from './log.js'
@@ -114,6 +114,7 @@ import {
   createAbortController,
   createChildAbortController,
 } from './abortController.js'
+import type { Dirent } from 'fs'
 import { isAbortError } from './errors.js'
 import {
   getFileModificationTimeAsync,
@@ -1891,6 +1892,63 @@ async function getOpenedFileFromIDE(
   ]
 }
 
+const MAX_AT_MENTION_DIRECTORY_ENTRIES = 10_000
+
+async function collectDirectoryListing(
+  rootPath: string,
+): Promise<{ content: string; truncated: boolean }> {
+  const names: string[] = []
+  const queue: { absolutePath: string; relativePrefix: string }[] = [
+    { absolutePath: rootPath, relativePrefix: '' },
+  ]
+  let truncated = false
+
+  while (queue.length > 0 && !truncated) {
+    const current = queue.shift()!
+    let entries: Dirent[]
+    try {
+      entries = await readdir(current.absolutePath, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    entries.sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1
+      if (!a.isDirectory() && b.isDirectory()) return 1
+      return a.name.localeCompare(b.name)
+    })
+
+    for (const entry of entries) {
+      const relativeName = current.relativePrefix
+        ? `${current.relativePrefix}/${entry.name}`
+        : entry.name
+      const displayName = entry.isDirectory() ? `${relativeName}/` : relativeName
+
+      if (names.length >= MAX_AT_MENTION_DIRECTORY_ENTRIES) {
+        truncated = true
+        break
+      }
+
+      names.push(displayName)
+
+      if (entry.isDirectory()) {
+        queue.push({
+          absolutePath: join(current.absolutePath, entry.name),
+          relativePrefix: relativeName,
+        })
+      }
+    }
+  }
+
+  if (truncated) {
+    names.push(
+      `\u2026 output truncated after ${MAX_AT_MENTION_DIRECTORY_ENTRIES} entries`,
+    )
+  }
+
+  return { content: names.join('\n'), truncated }
+}
+
 async function processAtMentionedFiles(
   input: string,
   toolUseContext: ToolUseContext,
@@ -1916,24 +1974,15 @@ async function processAtMentionedFiles(
           const stats = await stat(absoluteFilename)
           if (stats.isDirectory()) {
             try {
-              const entries = await readdir(absoluteFilename, {
-                withFileTypes: true,
-              })
-              const MAX_DIR_ENTRIES = 1000
-              const truncated = entries.length > MAX_DIR_ENTRIES
-              const names = entries.slice(0, MAX_DIR_ENTRIES).map(e => e.name)
-              if (truncated) {
-                names.push(
-                  `\u2026 and ${entries.length - MAX_DIR_ENTRIES} more entries`,
-                )
-              }
-              const stdout = names.join('\n')
+              const { content } = await collectDirectoryListing(
+                absoluteFilename,
+              )
               logEvent('tengu_at_mention_extracting_directory_success', {})
 
               return {
                 type: 'directory' as const,
                 path: absoluteFilename,
-                content: stdout,
+                content,
                 displayPath: relative(getCwd(), absoluteFilename),
               }
             } catch {

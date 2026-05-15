@@ -23,7 +23,7 @@ import { getShellCompletions, type ShellCompletionType } from '../utils/bash/she
 import { formatLogMetadata } from '../utils/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
 import { applyCommandSuggestion, findMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
-import { getDirectoryCompletions, getPathCompletions } from '../utils/suggestions/directoryCompletion.js';
+import { getDirectoryCompletions, getPathCompletions, isPathLikeToken } from '../utils/suggestions/directoryCompletion.js';
 import { getShellHistoryCompletion } from '../utils/suggestions/shellHistoryCompletion.js';
 import { getSlackChannelSuggestions, hasSlackMcpServer } from '../utils/suggestions/slackChannelSuggestions.js';
 import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js';
@@ -547,14 +547,6 @@ export function useTypeahead({
       return;
     }
 
-    if ((suggestionType === 'file' || suggestionType === 'directory') && effectiveCursorOffset > 0 && /\s/.test(value[effectiveCursorOffset - 1]!)) {
-      debouncedFetchFileSuggestions.cancel();
-      latestSearchTokenRef.current = null;
-      latestPathTokenRef.current = '';
-      clearSuggestions();
-      return;
-    }
-
     // Check for mid-input slash command (e.g., "help me /com")
     // Only in prompt mode, not when input starts with "/" (handled separately)
     // Note: ghost text for prompt mode is computed synchronously via syncPromptGhostText useMemo.
@@ -829,6 +821,13 @@ export function useTypeahead({
         clearSuggestions();
       }
     }
+    if ((suggestionType === 'file' || suggestionType === 'directory') && !hasAtSymbol) {
+      debouncedFetchFileSuggestions.cancel();
+      latestSearchTokenRef.current = null;
+      latestPathTokenRef.current = '';
+      clearSuggestions();
+      return;
+    }
 
     // Check for @ symbol to trigger file and MCP resource suggestions
     // Skip @ autocomplete in bash mode - @ has no special meaning in shell commands
@@ -838,16 +837,20 @@ export function useTypeahead({
       if (completionToken && completionToken.token.startsWith('@')) {
         const searchToken = extractSearchToken(completionToken);
 
-        // Empty @ and path-like tokens should browse the filesystem directly.
-        // This keeps @, @src/, and @目录/ traversable even before the fuzzy
-        // file index has finished building.
-        if (canUsePathCompletion(searchToken)) {
+        // Browse local paths directly before falling back to fuzzy search.
+        // This is required for CJK prefixes because the restored fuzzy index
+        // can return no matches for tokens like @中文 before a slash is typed.
+        if (canUsePathCompletion(searchToken) || isPathLikeToken(searchToken)) {
           latestPathTokenRef.current = searchToken;
           const pathSuggestions = await getPathCompletions(searchToken, {
             maxResults: 15
           });
           // Discard stale results if a newer query was initiated while waiting
           if (latestPathTokenRef.current !== searchToken) {
+            return;
+          }
+          const latestToken = extractCompletionToken(value, effectiveCursorOffset, true);
+          if (!latestToken?.token.startsWith('@') || extractSearchToken(latestToken) !== searchToken) {
             return;
           }
           if (pathSuggestions.length > 0) {
@@ -860,7 +863,6 @@ export function useTypeahead({
             return;
           }
         }
-
         latestPathTokenRef.current = `non-path:${searchToken}`;
 
         // Skip if we already fetched for this exact token (prevents loop from
@@ -1087,7 +1089,8 @@ export function useTypeahead({
           applyFileSuggestion(replacementValue, input, completionToken.token, completionToken.startPos, onInputChange, setCursorOffset);
           // Don't clear suggestions so user can continue typing or select a specific option
           // Instead, update for the new prefix
-          void updateSuggestions(input.replace(completionToken.token, replacementValue), cursorOffset);
+          const newInput = input.slice(0, completionToken.startPos) + replacementValue + input.slice(completionToken.startPos + completionToken.token.length);
+          void updateSuggestions(newInput, completionToken.startPos + replacementValue.length);
         } else if (index < suggestions.length) {
           // Otherwise, apply the selected suggestion
           const suggestion = suggestions[index];
@@ -1245,6 +1248,10 @@ export function useTypeahead({
           const result = applyDirectorySuggestion(input, suggestion.id, completionToken.startPos, completionToken.token.length, isDir);
           onInputChange(result.newInput);
           setCursorOffset(result.cursorPos);
+          if (isDir) {
+            void updateSuggestions(result.newInput, result.cursorPos);
+            return;
+          }
         }
         // If no completion token found (e.g., cursor after space), don't modify input
         // to avoid data loss - just clear suggestions
@@ -1253,7 +1260,7 @@ export function useTypeahead({
         clearSuggestions();
       }
     }
-  }, [suggestions, selectedSuggestion, suggestionType, commands, input, cursorOffset, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, debouncedFetchFileSuggestions, debouncedFetchSlackChannels]);
+  }, [suggestions, selectedSuggestion, suggestionType, commands, input, cursorOffset, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, updateSuggestions]);
 
   // Handler for autocomplete:accept - accepts current suggestion via Tab or Right Arrow
   const handleAutocompleteAccept = useCallback(() => {

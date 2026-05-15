@@ -52,11 +52,13 @@ let untrackedFetchPromise: Promise<void> | null = null
 
 // Store tracked files so we can rebuild index with untracked
 let cachedTrackedFiles: string[] = []
+let cachedUntrackedFiles: string[] = []
 // Store config files so mergeUntrackedIntoNormalizedCache preserves them
 let cachedConfigFiles: string[] = []
 // Store tracked directories so mergeUntrackedIntoNormalizedCache doesn't
 // recompute ~270k path.dirname() calls on each merge
 let cachedTrackedDirs: string[] = []
+let cachedUntrackedDirs: string[] = []
 
 // Cache for .ignore/.rgignore patterns (keyed by repoRoot:cwd)
 let ignorePatternsCache: ReturnType<typeof ignore> | null = null
@@ -91,8 +93,10 @@ export function clearFileSuggestionCaches(): void {
   cacheGeneration++
   untrackedFetchPromise = null
   cachedTrackedFiles = []
+  cachedUntrackedFiles = []
   cachedConfigFiles = []
   cachedTrackedDirs = []
+  cachedUntrackedDirs = []
   indexBuildComplete.clear()
   ignorePatternsCache = null
   ignorePatternsCacheKey = null
@@ -173,10 +177,15 @@ function normalizeGitPaths(
 async function mergeUntrackedIntoNormalizedCache(
   normalizedUntracked: string[],
 ): Promise<void> {
-  if (normalizedUntracked.length === 0) return
-  if (!fileIndex || cachedTrackedFiles.length === 0) return
+  cachedUntrackedFiles = normalizedUntracked
+  if (normalizedUntracked.length === 0) {
+    cachedUntrackedDirs = []
+    return
+  }
 
   const untrackedDirs = await getDirectoryNamesAsync(normalizedUntracked)
+  cachedUntrackedDirs = untrackedDirs
+  if (!fileIndex || cachedTrackedFiles.length === 0) return
   const allPaths = [
     ...cachedTrackedFiles,
     ...cachedConfigFiles,
@@ -610,7 +619,8 @@ function createFileSuggestionItem(
   filePath: string,
   score?: number,
 ): SuggestionItem {
-  const isDirectory = filePath.endsWith('/') || filePath.endsWith('\\')
+  const suggestionPath = normalizeSuggestionPath(filePath)
+  const isDirectory = suggestionPath.endsWith('/')
   const metadata =
     score !== undefined || isDirectory
       ? {
@@ -620,8 +630,8 @@ function createFileSuggestionItem(
       : undefined
 
   return {
-    id: `file-${filePath}`,
-    displayText: filePath,
+    id: `file-${suggestionPath}`,
+    displayText: suggestionPath,
     metadata,
   }
 }
@@ -638,6 +648,66 @@ function findMatchingFiles(
   return results.map(result =>
     createFileSuggestionItem(result.path, result.score),
   )
+}
+
+function getCachedSuggestionPaths(): string[] {
+  return [
+    ...new Set([
+      ...cachedTrackedDirs,
+      ...cachedUntrackedDirs,
+      ...cachedTrackedFiles,
+      ...cachedUntrackedFiles,
+      ...cachedConfigFiles,
+    ]),
+  ]
+}
+
+function scorePathFallbackMatch(filePath: string, query: string): number | null {
+  const normalizedPath = normalizeSuggestionPath(filePath)
+  const pathLower = normalizedPath.toLocaleLowerCase()
+  const queryLower = normalizeSuggestionPath(query).toLocaleLowerCase()
+  if (queryLower.length === 0) return null
+
+  const basenameLower = path.posix.basename(
+    normalizedPath.endsWith('/') ? normalizedPath.slice(0, -1) : normalizedPath,
+  ).toLocaleLowerCase()
+  const segments = pathLower.split('/').filter(Boolean)
+
+  if (basenameLower === queryLower) return 0
+  if (basenameLower.startsWith(queryLower)) return 0.05
+  if (pathLower.startsWith(queryLower)) return 0.1
+  if (segments.some(segment => segment.startsWith(queryLower))) return 0.15
+  if (basenameLower.includes(queryLower)) return 0.25
+  if (pathLower.includes(queryLower)) return 0.35
+  return null
+}
+
+function findMatchingFilesFromCachedPaths(partialPath: string): SuggestionItem[] {
+  const normalizedQuery = normalizeSuggestionPath(partialPath).replace(
+    /^\.\//,
+    '',
+  )
+  const paths = getCachedSuggestionPaths()
+  if (paths.length === 0) return []
+
+  return paths
+    .map(filePath => {
+      const score = scorePathFallbackMatch(filePath, normalizedQuery)
+      return score === null ? null : { filePath, score }
+    })
+    .filter(
+      (result): result is { filePath: string; score: number } =>
+        result !== null,
+    )
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score
+      const depthA = normalizeSuggestionPath(a.filePath).split('/').length
+      const depthB = normalizeSuggestionPath(b.filePath).split('/').length
+      if (depthA !== depthB) return depthA - depthB
+      return a.filePath.localeCompare(b.filePath)
+    })
+    .slice(0, MAX_SUGGESTIONS)
+    .map(result => createFileSuggestionItem(result.filePath, result.score))
 }
 
 /**
@@ -745,18 +815,14 @@ export async function generateFileSuggestions(
       query: partialPath,
     }
     const results = await executeFileSuggestionCommand(input)
-    return results
-      .slice(0, MAX_SUGGESTIONS)
-      .map(result => createFileSuggestionItem(result))
+    return results.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
   }
 
   // If the partial path is empty or just a dot, return current directory suggestions
   if (partialPath === '' || partialPath === '.' || partialPath === './') {
     const topLevelPaths = await getTopLevelPaths()
     startBackgroundCacheRefresh()
-    return topLevelPaths
-      .slice(0, MAX_SUGGESTIONS)
-      .map(result => createFileSuggestionItem(result))
+    return topLevelPaths.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
   }
 
   const startTime = Date.now()
@@ -788,6 +854,9 @@ export async function generateFileSuggestions(
     if (matches.length === 0 && fileListRefreshPromise) {
       const refreshedIndex = await fileListRefreshPromise
       matches = findMatchingFiles(refreshedIndex, normalizedPath)
+    }
+    if (matches.length === 0) {
+      matches = findMatchingFilesFromCachedPaths(normalizedPath)
     }
 
     const duration = Date.now() - startTime

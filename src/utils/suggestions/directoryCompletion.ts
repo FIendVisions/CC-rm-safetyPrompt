@@ -40,6 +40,8 @@ function normalizeSuggestionPath(filePath: string): string {
 // Cache configuration
 const CACHE_SIZE = 500
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const MAX_RECURSIVE_PATH_SCAN_ENTRIES = 10_000
+const SKIP_RECURSIVE_PATH_DIRS = new Set(['node_modules'])
 
 // Initialize LRU cache for directory scans
 const directoryCache = new LRUCache<string, DirectoryEntry[]>({
@@ -70,7 +72,11 @@ export function parsePartialPath(
 
   // If path ends with separator, treat as directory with no prefix
   // Handle both forward slash and platform-specific separator
-  if (partialPath.endsWith('/') || partialPath.endsWith(sep)) {
+  if (
+    partialPath.endsWith('/') ||
+    partialPath.endsWith('\\') ||
+    partialPath.endsWith(sep)
+  ) {
     return { directory: resolved, prefix: '' }
   }
 
@@ -158,9 +164,10 @@ export function isPathLikeToken(token: string): boolean {
   if (token.includes(':') && !isWindowsDrivePath) {
     return false
   }
-  const hasPathSeparator = token.includes('/') || token.includes('\\')
+
   return (
-    hasPathSeparator ||
+    token.includes('/') ||
+    token.includes('\\') ||
     token.startsWith('~/') ||
     token.startsWith('/') ||
     token.startsWith('./') ||
@@ -213,6 +220,84 @@ export async function scanDirectoryForPaths(
   }
 }
 
+async function getRecursivePathCompletions(
+  rootPath: string,
+  prefix: string,
+  options: {
+    includeFiles: boolean
+    includeHidden: boolean
+    maxResults: number
+  },
+): Promise<SuggestionItem[]> {
+  const fs = getFsImplementation()
+  const prefixLower = prefix.toLowerCase()
+  const results: SuggestionItem[] = []
+  const queue: { absolutePath: string; relativePrefix: string }[] = [
+    { absolutePath: rootPath, relativePrefix: '' },
+  ]
+  let scannedEntries = 0
+
+  while (
+    queue.length > 0 &&
+    results.length < options.maxResults &&
+    scannedEntries < MAX_RECURSIVE_PATH_SCAN_ENTRIES
+  ) {
+    const current = queue.shift()!
+    let entries
+    try {
+      entries = await fs.readdir(current.absolutePath)
+    } catch (error) {
+      logError(error)
+      continue
+    }
+
+    entries.sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1
+      if (!a.isDirectory() && b.isDirectory()) return 1
+      return a.name.localeCompare(b.name)
+    })
+
+    for (const entry of entries) {
+      if (scannedEntries >= MAX_RECURSIVE_PATH_SCAN_ENTRIES) break
+      scannedEntries++
+      if (!options.includeHidden && entry.name.startsWith('.')) continue
+
+      const relativeName = current.relativePrefix
+        ? `${current.relativePrefix}/${entry.name}`
+        : entry.name
+      const isDirectory = entry.isDirectory()
+
+      if (isDirectory) {
+        if (!SKIP_RECURSIVE_PATH_DIRS.has(entry.name)) {
+          queue.push({
+            absolutePath: join(current.absolutePath, entry.name),
+            relativePrefix: relativeName,
+          })
+        }
+      }
+
+      if (!options.includeFiles && !isDirectory) continue
+      if (
+        !entry.name.toLowerCase().startsWith(prefixLower) &&
+        !relativeName.toLowerCase().includes(prefixLower)
+      ) {
+        continue
+      }
+
+      const fullPath = normalizeSuggestionPath(relativeName)
+      results.push({
+        id: fullPath,
+        displayText: isDirectory ? fullPath + '/' : fullPath,
+        metadata: { type: isDirectory ? 'directory' : 'file' },
+      })
+
+      if (results.length >= options.maxResults) break
+    }
+  }
+
+  return results
+}
+
 /**
  * Get path completion suggestions for files and directories
  */
@@ -242,7 +327,10 @@ export async function getPathCompletions(
   // e.g., if partialPath is "src/c", directory portion is "src/"
   // Strip leading "./" since it's just used for cwd search
   // Handle both forward slash and platform separator for Windows compatibility
-  const hasSeparator = partialPath.includes('/') || partialPath.includes(sep)
+  const hasSeparator =
+    partialPath.includes('/') ||
+    partialPath.includes('\\') ||
+    partialPath.includes(sep)
   let dirPortion = ''
   if (hasSeparator) {
     // Find the last separator (either / or platform-specific)
@@ -256,6 +344,14 @@ export async function getPathCompletions(
     dirPortion = dirPortion.slice(2)
   }
   dirPortion = normalizeSuggestionPath(dirPortion)
+
+  if (matches.length === 0 && !hasSeparator && prefix.length > 0) {
+    return getRecursivePathCompletions(directory, prefix, {
+      includeFiles,
+      includeHidden,
+      maxResults,
+    })
+  }
 
   return matches.map(entry => {
     const fullPath = normalizeSuggestionPath(dirPortion + entry.name)
