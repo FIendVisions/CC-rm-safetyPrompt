@@ -1,4 +1,4 @@
-﻿import type { PermissionMode } from '../permissions/PermissionMode.js'
+import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { capitalize } from '../stringUtils.js'
 import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
 import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
@@ -99,8 +99,8 @@ export function getAgentModel(
  * tier. When it does, the subagent inherits the parent's exact model string
  * instead of resolving the alias to a provider default.
  *
- * Prevents surprising downgrades: a Vertex user on Opus 4.7 (via /model) who
- * spawns a subagent with `model: opus` should get Opus 4.7, not whatever
+ * Prevents surprising downgrades: a Vertex user on Opus 4.8 (via /model) who
+ * spawns a subagent with `model: opus` should get Opus 4.8, not whatever
  * getDefaultOpusModel() returns for 3P.
  * See https://github.com/anthropics/claude-code/issues/30815.
  *

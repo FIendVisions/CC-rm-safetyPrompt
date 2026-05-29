@@ -1,4 +1,4 @@
-﻿import {
+import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
@@ -11,10 +11,10 @@ import {
 } from '../utils/settings/settings.js'
 
 /**
- * Migrate first-party users off explicit Opus 4.0/4.1 model strings.
+ * Migrate first-party users off explicit older Opus 4.x model strings.
  *
- * The 'opus' alias already resolves to Opus 4.7 for 1P, so anyone still
- * on an explicit 4.0/4.1 string pinned it in settings before 4.5 launched.
+ * The 'opus' alias already resolves to Opus 4.8 for 1P, so anyone still
+ * on an explicit older string pinned it in settings before a newer Opus launched.
  * parseUserSpecifiedModel now silently remaps these at runtime anyway —
  * this migration cleans up the settings file so /model shows the right
  * thing, and sets a timestamp so the REPL can show a one-time notification.
@@ -40,7 +40,8 @@ export function migrateLegacyOpusToCurrent(): void {
     model !== 'claude-opus-4-20250514' &&
     model !== 'claude-opus-4-1-20250805' &&
     model !== 'claude-opus-4-0' &&
-    model !== 'claude-opus-4-1'
+    model !== 'claude-opus-4-1' &&
+    model !== 'claude-opus-4-7'
   ) {
     return
   }

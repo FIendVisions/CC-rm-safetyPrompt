@@ -1,4 +1,4 @@
-﻿import type { ModelName } from './model.js'
+import type { ModelName } from './model.js'
 import type { APIProvider } from './providers.js'
 
 export type ModelConfig = Record<APIProvider, ModelName>
@@ -69,12 +69,16 @@ export const CLAUDE_OPUS_4_5_CONFIG = {
   foundry: 'claude-opus-4-5',
 } as const satisfies ModelConfig
 
-export const CLAUDE_OPUS_4_6_CONFIG = {
-  firstParty: 'claude-opus-4-7',
-  bedrock: 'us.anthropic.claude-opus-4-7-v1',
-  vertex: 'claude-opus-4-7',
-  foundry: 'claude-opus-4-7',
+export const CLAUDE_OPUS_4_8_CONFIG = {
+  firstParty: 'claude-opus-4-8',
+  bedrock: 'anthropic.claude-opus-4-8',
+  vertex: 'claude-opus-4-8',
+  foundry: 'claude-opus-4-8',
 } as const satisfies ModelConfig
+
+// Compatibility alias: the restored tree still uses the opus46 key/name for
+// the current Opus slot in many places.
+export const CLAUDE_OPUS_4_6_CONFIG = CLAUDE_OPUS_4_8_CONFIG
 
 export const CLAUDE_SONNET_4_6_CONFIG = {
   firstParty: 'claude-sonnet-4-6',
@@ -95,12 +99,12 @@ export const ALL_MODEL_CONFIGS = {
   opus40: CLAUDE_OPUS_4_CONFIG,
   opus41: CLAUDE_OPUS_4_1_CONFIG,
   opus45: CLAUDE_OPUS_4_5_CONFIG,
-  opus46: CLAUDE_OPUS_4_6_CONFIG,
+  opus46: CLAUDE_OPUS_4_8_CONFIG,
 } as const satisfies Record<string, ModelConfig>
 
 export type ModelKey = keyof typeof ALL_MODEL_CONFIGS
 
-/** Union of all canonical first-party model IDs, e.g. 'claude-opus-4-7' | 'claude-sonnet-4-5-20250929' | … */
+/** Union of all canonical first-party model IDs, e.g. 'claude-opus-4-8' | 'claude-sonnet-4-5-20250929' | … */
 export type CanonicalModelId =
   (typeof ALL_MODEL_CONFIGS)[ModelKey]['firstParty']
 

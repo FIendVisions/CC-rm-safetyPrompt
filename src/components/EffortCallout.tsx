@@ -1,4 +1,4 @@
-﻿import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useEffect, useRef } from 'react';
 import { Box, Text } from '../ink.js';
 import { isMaxSubscriber, isProSubscriber, isTeamSubscriber } from '../utils/auth.js';
@@ -104,11 +104,11 @@ export function EffortCallout(t0) {
   let t9;
   if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
     t9 = [{
-      label: <EffortOptionLabel level="medium" text="Medium (recommended)" />,
-      value: "medium"
-    }, {
-      label: <EffortOptionLabel level="high" text="High" />,
+      label: <EffortOptionLabel level="high" text="High (default)" />,
       value: "high"
+    }, {
+      label: <EffortOptionLabel level="medium" text="Medium" />,
+      value: "medium"
     }, {
       label: <EffortOptionLabel level="low" text="Low" />,
       value: "low"
@@ -212,14 +212,14 @@ function EffortOptionLabel(t0) {
  * Check whether to show the effort callout.
  *
  * Audience:
- * - Pro: already had medium default; show unless they saw v1 (effortCalloutDismissed)
- * - Max/Team: getting medium via tengu_grey_step2 config; show when enabled
+ * - Pro: show unless they saw v1 (effortCalloutDismissed)
+ * - Max/Team: show when enabled
  * - Everyone else: mark as dismissed so it never shows
  */
 export function shouldShowEffortCallout(model: string): boolean {
-  // Only show for Opus 4.7 for now
+  // Only show for Opus 4.8 for now
   const parsed = parseUserSpecifiedModel(model);
-  if (!parsed.toLowerCase().includes('opus-4-7')) {
+  if (!parsed.toLowerCase().includes('opus-4-8')) {
     return false;
   }
   const config = getGlobalConfig();
@@ -232,8 +232,7 @@ export function shouldShowEffortCallout(model: string): boolean {
     return false;
   }
 
-  // Pro users already had medium default before this PR. Show the new copy,
-  // but skip if they already saw the v1 dialog — no point nagging twice.
+  // Pro users may have already seen the v1 dialog; avoid nagging twice.
   if (isProSubscriber()) {
     if (config.effortCalloutDismissed) {
       markV2Dismissed();
@@ -242,7 +241,7 @@ export function shouldShowEffortCallout(model: string): boolean {
     return getOpusDefaultEffortConfig().enabled;
   }
 
-  // Max/Team are the target of the tengu_grey_step2 config.
+  // Max/Team are controlled by the tengu_grey_step2 config.
   // Don't mark dismissed when config is disabled — they should see the dialog
   // once it's enabled for them.
   if (isMaxSubscriber() || isTeamSubscriber()) {

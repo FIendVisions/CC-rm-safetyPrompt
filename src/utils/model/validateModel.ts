@@ -1,4 +1,4 @@
-﻿// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { MODEL_ALIASES } from './aliases.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { getAPIProvider } from './providers.js'
@@ -146,7 +146,11 @@ function get3PFallbackSuggestion(model: string): string | undefined {
     return undefined
   }
   const lowerModel = model.toLowerCase()
-  if (lowerModel.includes('opus-4-7') || lowerModel.includes('opus_4_6')) {
+  if (
+    lowerModel.includes('opus-4-8') ||
+    lowerModel.includes('opus-4-7') ||
+    lowerModel.includes('opus_4_6')
+  ) {
     return getModelStrings().opus41
   }
   if (lowerModel.includes('sonnet-4-6') || lowerModel.includes('sonnet_4_6')) {

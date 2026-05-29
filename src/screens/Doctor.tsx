@@ -1,4 +1,4 @@
-﻿import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import { join } from 'path';
 import React, { Suspense, use, useCallback, useEffect, useMemo, useState } from 'react';
@@ -151,7 +151,7 @@ export function Doctor(t0) {
       upperLimit: TASK_MAX_OUTPUT_UPPER_LIMIT
     }, {
       name: "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
-      ...getModelMaxOutputTokens("claude-opus-4-7")
+      ...getModelMaxOutputTokens("claude-opus-4-8")
     }];
     t4 = envVars.map(_temp8).filter(_temp9);
     $[5] = t4;

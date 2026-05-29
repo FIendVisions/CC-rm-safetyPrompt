@@ -1,4 +1,4 @@
-﻿import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { shouldIncludeFirstPartyOnlyBetas } from './betas.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -89,7 +89,7 @@ export function getExperimentAdvisorModels():
 export function modelSupportsAdvisor(model: string): boolean {
   const m = model.toLowerCase()
   return (
-    m.includes('opus-4-7') ||
+    m.includes('opus-4-8') ||
     m.includes('sonnet-4-6') ||
     process.env.USER_TYPE === 'ant'
   )
@@ -99,7 +99,7 @@ export function modelSupportsAdvisor(model: string): boolean {
 export function isValidAdvisorModel(model: string): boolean {
   const m = model.toLowerCase()
   return (
-    m.includes('opus-4-7') ||
+    m.includes('opus-4-8') ||
     m.includes('sonnet-4-6') ||
     process.env.USER_TYPE === 'ant'
   )

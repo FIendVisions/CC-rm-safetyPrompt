@@ -1,4 +1,4 @@
-﻿import {
+import {
   getModelStrings as getModelStringsState,
   setModelStrings as setModelStringsState,
 } from 'src/bootstrap/state.js'
@@ -43,8 +43,8 @@ async function getBedrockModelStrings(): Promise<ModelStrings> {
     return fallback
   }
   // Each config's firstParty ID is the canonical substring we search for in the
-  // user's inference profile list (e.g. "claude-opus-4-7" matches
-  // "eu.anthropic.claude-opus-4-7-v1"). Fall back to the hardcoded bedrock ID
+  // user's inference profile list (e.g. "claude-opus-4-8" matches
+  // "eu.anthropic.claude-opus-4-8-v1"). Fall back to the hardcoded bedrock ID
   // when no matching profile is found.
   const out = {} as ModelStrings
   for (const key of MODEL_KEYS) {
@@ -57,7 +57,7 @@ async function getBedrockModelStrings(): Promise<ModelStrings> {
 /**
  * Layer user-configured modelOverrides (from settings.json) on top of the
  * provider-derived model strings. Overrides are keyed by canonical first-party
- * model ID (e.g. "claude-opus-4-7") and map to arbitrary provider-specific
+ * model ID (e.g. "claude-opus-4-8") and map to arbitrary provider-specific
  * strings — typically Bedrock inference profile ARNs.
  */
 function applyModelOverrides(ms: ModelStrings): ModelStrings {

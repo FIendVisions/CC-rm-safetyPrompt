@@ -1,4 +1,4 @@
-﻿# TypeScript Claude API
+# TypeScript Claude API
 
 Use `@anthropic-ai/sdk` for direct access to the Messages API from TypeScript.
 
@@ -43,7 +43,7 @@ Pass prior turns back in `messages` when you need continuity. Keep the conversat
 
 ## Model choice
 
-- `claude-opus-4-7`: highest reasoning quality
+- `claude-opus-4-8`: highest reasoning quality
 - `claude-sonnet-4-6`: general default for most product workloads
 - `claude-haiku-4-5`: lower-latency and lower-cost tasks
 

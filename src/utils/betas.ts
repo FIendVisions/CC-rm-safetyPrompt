@@ -1,4 +1,4 @@
-﻿import { feature } from 'bun:bundle'
+import { feature } from 'bun:bundle'
 import memoize from 'lodash-es/memoize.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -151,7 +151,7 @@ export function modelSupportsStructuredOutputs(model: string): boolean {
     canonical.includes('claude-sonnet-4-5') ||
     canonical.includes('claude-opus-4-1') ||
     canonical.includes('claude-opus-4-5') ||
-    canonical.includes('claude-opus-4-7') ||
+    canonical.includes('claude-opus-4-8') ||
     canonical.includes('claude-haiku-4-5')
   )
 }
@@ -189,7 +189,10 @@ export function modelSupportsAutoMode(model: string): boolean {
       return true
     }
     // External allowlist (firstParty already checked above).
-    return /^claude-(opus|sonnet)-4-6/.test(m)
+    return (
+      m.includes('claude-opus-4-8') ||
+      m.includes('claude-sonnet-4-6')
+    )
   }
   return false
 }

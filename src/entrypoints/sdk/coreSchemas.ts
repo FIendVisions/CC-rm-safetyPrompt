@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SDK Core Schemas - Zod schemas for serializable SDK data types.
  *
  * These schemas are the single source of truth for SDK data types.
@@ -71,7 +71,7 @@ export const ThinkingAdaptiveSchema = lazySchema(() =>
     .object({
       type: z.literal('adaptive'),
     })
-    .describe('Claude decides when and how much to think (Opus 4.7+).'),
+    .describe('Claude decides when and how much to think (Opus 4.8+).'),
 )
 
 export const ThinkingEnabledSchema = lazySchema(() =>

@@ -1,4 +1,4 @@
-﻿import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "react/compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle';
 import { spawnSync } from 'child_process';
@@ -2078,7 +2078,7 @@ export function REPL({
     // Undercover auto-enable explainer (ant-only, eliminated from external builds)
     if ("external" === 'ant' && allowDialogsWithAnimation && showUndercoverCallout) return 'undercover-callout';
 
-    // Effort callout (shown once for Opus 4.7 users when effort is enabled)
+    // Effort callout (shown once for Opus 4.8 users when effort is enabled)
     if (allowDialogsWithAnimation && showEffortCallout) return 'effort-callout';
 
     // Remote callout (shown once before first bridge enable)

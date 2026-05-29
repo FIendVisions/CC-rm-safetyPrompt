@@ -1,9 +1,10 @@
-﻿// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
+import { getAPIProvider } from './model/providers.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -45,7 +46,13 @@ export function modelSupports1M(model: string): boolean {
     return false
   }
   const canonical = getCanonicalName(model)
-  return canonical.includes('claude-sonnet-4') || canonical.includes('opus-4-7')
+  if (
+    canonical.includes('opus-4-8') &&
+    getAPIProvider() === 'foundry'
+  ) {
+    return false
+  }
+  return canonical.includes('claude-sonnet-4') || canonical.includes('opus-4-8')
 }
 
 export function getContextWindowForModel(
@@ -66,8 +73,15 @@ export function getContextWindowForModel(
     }
   }
 
+  const canonical = getCanonicalName(model)
+  const provider = getAPIProvider()
+
   // [1m] suffix — explicit client-side opt-in, respected over all detection
-  if (has1mContext(model)) {
+  // except for Foundry Opus 4.8, where the public platform limit is 200k.
+  if (
+    has1mContext(model) &&
+    !(canonical.includes('opus-4-8') && provider === 'foundry')
+  ) {
     return 1_000_000
   }
 
@@ -80,6 +94,12 @@ export function getContextWindowForModel(
       return MODEL_CONTEXT_WINDOW_DEFAULT
     }
     return cap.max_input_tokens
+  }
+
+  // Claude Opus 4.8 has a 1M context window by default on Claude API,
+  // Bedrock, and Vertex. Foundry remains at 200k.
+  if (canonical.includes('opus-4-8') && provider !== 'foundry') {
+    return 1_000_000
   }
 
   if (betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model)) {
@@ -164,7 +184,7 @@ export function getModelMaxOutputTokens(model: string): {
 
   const m = getCanonicalName(model)
 
-  if (m.includes('opus-4-7')) {
+  if (m.includes('opus-4-8')) {
     defaultTokens = 64_000
     upperLimit = 128_000
   } else if (m.includes('sonnet-4-6')) {
