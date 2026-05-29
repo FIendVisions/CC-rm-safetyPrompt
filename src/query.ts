@@ -40,6 +40,7 @@ import type {
 import { logError } from './utils/log.js'
 import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
+  API_ERROR_MESSAGE_PREFIX,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
@@ -1259,6 +1260,23 @@ async function* queryLoop(
       // prompt-too-long, auth failure, etc.). The model never produced a
       // real response — hooks evaluating it create a death spiral:
       // error → hook blocking → retry → error → …
+      if (
+        assistantMessages.length === 0 &&
+        (querySource.startsWith('repl_main_thread') || querySource === 'sdk')
+      ) {
+        const message = `${API_ERROR_MESSAGE_PREFIX}: The model returned an empty response after the last tool result. This usually means the provider or gateway ended the turn without content. Please retry the request.`
+        logEvent('tengu_empty_assistant_response', {
+          queryChainId: queryChainIdForAnalytics,
+          queryDepth: queryTracking.depth,
+          querySource:
+            querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        })
+        yield createAssistantAPIErrorMessage({
+          content: message,
+        })
+        return { reason: 'model_error', error: new Error(message) }
+      }
+
       if (lastMessage?.isApiErrorMessage) {
         void executeStopFailureHooks(lastMessage, toolUseContext)
         return { reason: 'completed' }

@@ -23,7 +23,10 @@ import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
 import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
-import { getAPIProvider } from './providers.js'
+import {
+  getAPIProvider,
+  isFirstPartyAnthropicBaseUrl,
+} from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
@@ -34,7 +37,28 @@ export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
 export function getSmallFastModel(): ModelName {
-  return process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
+  if (process.env.ANTHROPIC_SMALL_FAST_MODEL) {
+    return process.env.ANTHROPIC_SMALL_FAST_MODEL
+  }
+
+  if (process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL) {
+    return getDefaultHaikuModel()
+  }
+
+  // Custom API gateways often only expose the configured main model. Falling
+  // back to that model avoids background Haiku calls retrying for minutes when
+  // the gateway does not have a Haiku route.
+  if (!isFirstPartyAnthropicBaseUrl()) {
+    const userModel = getUserSpecifiedModelSetting()
+    if (userModel && userModel !== 'haiku') {
+      return parseUserSpecifiedModel(userModel)
+    }
+    if (process.env.ANTHROPIC_MODEL) {
+      return process.env.ANTHROPIC_MODEL
+    }
+  }
+
+  return getDefaultHaikuModel()
 }
 
 export function isNonCustomOpusModel(model: ModelName): boolean {
